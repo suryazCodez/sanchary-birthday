@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Happy Birthday Sanchary! ✨</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    html, body { width: 100vw; height: 100vh; overflow: hidden; background: #07090e; font-family: -apple-system, sans-serif; color: white; }
+    #canvas-container { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    .ui-layer { position: absolute; inset: 0; z-index: 10; pointer-events: none; display: flex; flex-direction: column; justify-content: space-between; padding: 18px; }
+    .interactive { pointer-events: auto; }
+    .glass { background: rgba(15, 23, 42, 0.75); backdrop-filter: blur(12px); border: 1px solid rgba(255, 255, 255, 0.15); border-radius: 16px; padding: 14px 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.5); }
+    .btn { background: linear-gradient(135deg, #f59e0b, #ec4899); color: white; border: none; padding: 12px 20px; border-radius: 12px; font-weight: bold; font-size: 14px; cursor: pointer; transition: 0.2s; }
+    .btn-secondary { background: rgba(255,255,255,0.15); border: 1px solid rgba(255,255,255,0.25); color: white; padding: 12px 16px; border-radius: 12px; font-size: 14px; cursor: pointer; }
+    #msg-card { display: none; text-align: center; max-width: 400px; margin: auto; animation: pop 0.4s ease forwards; }
+    @keyframes pop { from { opacity: 0; transform: scale(0.9); } to { opacity: 1; transform: scale(1); } }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.9.3/dist/confetti.browser.min.js"></script>
+</head>
+<body>
+  <div id="canvas-container"></div>
+
+  <div class="ui-layer">
+    <div class="glass interactive" style="align-self: flex-start;">
+      <h3 style="font-size: 1.1rem; color: #fbbf24;">Alpine Retreat 🏔️</h3>
+      <p style="font-size: 0.8rem; color: #cbd5e1;">For Sanchary</p>
+    </div>
+
+    <div id="msg-card" class="glass interactive">
+      <h2 style="font-size: 1.5rem; color: #f59e0b; margin-bottom: 8px;">Dearest Sanchary, 🎂✨</h2>
+      <p style="font-size: 0.95rem; line-height: 1.5; color: #e2e8f0;">
+        Happy Birthday! May your journey ahead be as grand and peaceful as these mountain horizons. Here’s to laughter, wild adventures, and happiness!
+      </p>
+    </div>
+
+    <div class="interactive" style="display: flex; gap: 8px; justify-content: center; width: 100%;">
+      <button class="btn" id="surprise-btn" onclick="triggerSurprise()">Surprise Sanchary 🎁</button>
+      <button class="btn-secondary" id="cam-btn" onclick="toggleTour()">Auto Tour 🚁</button>
+    </div>
+  </div>
+
+  <script>
+    // 1. Scene, Camera, Renderer
+    const container = document.getElementById('canvas-container');
+    const scene = new THREE.Scene();
+    scene.fog = new THREE.FogExp2(0x161224, 0.025);
+
+    const camera = new THREE.PerspectiveCamera(55, window.innerWidth / window.innerHeight, 0.1, 1000);
+    camera.position.set(0, 4, 14);
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    const controls = new THREE.OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.maxPolarAngle = Math.PI / 2 - 0.05;
+    controls.target.set(0, 2, 0);
+
+    // 2. Lighting (Golden sunset unreal-style)
+    const ambientLight = new THREE.AmbientLight(0xffeedd, 0.6);
+    scene.add(ambientLight);
+
+    const sun = new THREE.DirectionalLight(0xffa726, 2.0);
+    sun.position.set(20, 15, 25);
+    scene.add(sun);
+
+    // 3. Custom Mountain Shader Terrain
+    const mountainVS = `
+      varying vec3 vPos;
+      varying vec3 vNorm;
+      void main() {
+        vNorm = normal;
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `;
+    const mountainFS = `
+      varying vec3 vPos;
+      varying vec3 vNorm;
+      void main() {
+        vec3 grass = vec3(0.18, 0.32, 0.14);
+        vec3 rock = vec3(0.32, 0.28, 0.25);
+        vec3 snow = vec3(0.95, 0.96, 1.0);
+        float slope = 1.0 - abs(dot(vNorm, vec3(0.0, 1.0, 0.0)));
+        vec3 col = mix(grass, rock, smoothstep(0.2, 0.6, slope));
+        col = mix(col, snow, smoothstep(10.0, 18.0, vPos.y));
+        vec3 light = normalize(vec3(5.0, 4.0, 6.0));
+        float diff = max(dot(vNorm, light), 0.2);
+        gl_FragColor = vec4(col * (diff * vec3(1.0, 0.85, 0.7) + vec3(0.15)), 1.0);
+      }
+    `;
+
+    const geom = new THREE.PlaneGeometry(90, 90, 64, 64);
+    geom.rotateX(-Math.PI / 2);
+    const pos = geom.attributes.position;
+    for (let i = 0; i < pos.count; i++) {
+      let x = pos.getX(i), z = pos.getZ(i);
+      let dist = Math.sqrt(x * x + z * z);
+      if (dist < 10) {
+        pos.setY(i, 0.0);
+      } else {
+        let h = Math.sin(x * 0.12) * Math.cos(z * 0.12) * 6.0 + Math.sin(x * 0.05 + z * 0.05) * 10.0 + (dist - 10.0) * 0.3;
+        pos.setY(i, Math.max(0, h));
+      }
+    }
+    geom.computeVertexNormals();
+
+    const mountainMat = new THREE.ShaderMaterial({
+      vertexShader: mountainVS,
+      fragmentShader: mountainFS
+    });
+    const terrain = new THREE.Mesh(geom, mountainMat);
+    scene.add(terrain);
+
+    // 4. Farmhouse Group
+    const house = new THREE.Group();
+    // Body
+    const cabin = new THREE.Mesh(new THREE.BoxGeometry(8, 3.2, 6), new THREE.MeshStandardMaterial({ color: 0x5c3a21, roughness: 0.8 }));
+    cabin.position.y = 1.6;
+    house.add(cabin);
+
+    // Roof
+    const roof = new THREE.Mesh(new THREE.ConeGeometry(6.4, 2.5, 4), new THREE.MeshStandardMaterial({ color: 0x2b170c, roughness: 0.6 }));
+    roof.position.y = 4.2;
+    roof.rotation.y = Math.PI / 4;
+    house.add(roof);
+
+    // Chimney
+    const chimney = new THREE.Mesh(new THREE.BoxGeometry(0.8, 3.5, 0.8), new THREE.MeshStandardMaterial({ color: 0x3d3936 }));
+    chimney.position.set(2.4, 3.8, -1.2);
+    house.add(chimney);
+
+    // Veranda & Deck
+    const deck = new THREE.Mesh(new THREE.BoxGeometry(9, 0.3, 2.8), new THREE.MeshStandardMaterial({ color: 0x3d2516 }));
+    deck.position.set(0, 0.15, 3.8);
+    house.add(deck);
+
+    // Glowing warm windows
+    [-2.2, 2.2].forEach(x => {
+      const win = new THREE.Mesh(new THREE.PlaneGeometry(1.4, 1.4), new THREE.MeshBasicMaterial({ color: 0xffb74d }));
+      win.position.set(x, 1.8, 3.02);
+      house.add(win);
+      const light = new THREE.PointLight(0xff9800, 2, 7);
+      light.position.set(x, 1.8, 3.2);
+      house.add(light);
+    });
+
+    // Fairy string lights
+    [-3, -2, -1, 0, 1, 2, 3].forEach(x => {
+      const bulb = new THREE.Mesh(new THREE.SphereGeometry(0.08, 8, 8), new THREE.MeshBasicMaterial({ color: 0xffd54f }));
+      bulb.position.set(x * 1.1, 3.1, 4.2);
+      house.add(bulb);
+    });
+
+    scene.add(house);
+
+    // 5. Fireflies Particle Shader
+    const fireflyCount = 90;
+    const fireflyGeom = new THREE.BufferGeometry();
+    const fireflyPos = new Float32Array(fireflyCount * 3);
+    for (let i = 0; i < fireflyCount * 3; i += 3) {
+      fireflyPos[i] = (Math.random() - 0.5) * 20;
+      fireflyPos[i+1] = 0.5 + Math.random() * 5;
+      fireflyPos[i+2] = (Math.random() - 0.5) * 20;
+    }
+    fireflyGeom.setAttribute('position', new THREE.BufferAttribute(fireflyPos, 3));
+    const fireflyMat = new THREE.PointsMaterial({ color: 0xffeb3b, size: 0.18, transparent: true, opacity: 0.8 });
+    const fireflies = new THREE.Points(fireflyGeom, fireflyMat);
+    scene.add(fireflies);
+
+    // 6. Floating Sky Lanterns (Instantiated for Surprise)
+    const lanterns = [];
+    function createLanterns() {
+      for (let i = 0; i < 20; i++) {
+        const lantern = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.2, 0.28, 0.5, 8),
+          new THREE.MeshBasicMaterial({ color: 0xff9800 })
+        );
+        lantern.position.set((Math.random() - 0.5) * 16, 1 + Math.random() * 2, (Math.random() - 0.5) * 16);
+        scene.add(lantern);
+        lanterns.push(lantern);
+      }
+    }
+
+    // Interactive functions
+    let tourActive = false;
+    function toggleTour() {
+      tourActive = !tourActive;
+      document.getElementById('cam-btn').innerText = tourActive ? "Stop Tour ✋" : "Auto Tour 🚁";
+      controls.enabled = !tourActive;
+    }
+
+    function playMelody() {
+      try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const notes = [261.63, 261.63, 293.66, 261.63, 349.23, 329.63]; // Birthday intro notes
+        notes.forEach((freq, idx) => {
+          const osc = ctx.createOscillator();
+          const gain = ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.value = freq;
+          gain.gain.setValueAtTime(0.12, ctx.currentTime + idx * 0.35);
+          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + idx * 0.35 + 0.55);
+          osc.connect(gain);
+          gain.connect(ctx.destination);
+          osc.start(ctx.currentTime + idx * 0.35);
+          osc.stop(ctx.currentTime + idx * 0.35 + 0.6);
+        });
+      } catch (e) {}
+    }
+
+    let surprised = false;
+    function triggerSurprise() {
+      document.getElementById('msg-card').style.display = 'block';
+      document.getElementById('surprise-btn').innerText = 'Celebrate More! 🎉';
+      playMelody();
+      if (!surprised) {
+        createLanterns();
+        surprised = true;
+      }
+      confetti({ particleCount: 90, spread: 70, origin: { y: 0.6 } });
+    }
+
+    // Animation Loop
+    let clock = new THREE.Clock();
+    function animate() {
+      requestAnimationFrame(animate);
+      const t = clock.getElapsedTime();
+
+      // Drone camera tour mode
+      if (tourActive) {
+        camera.position.x = Math.sin(t * 0.25) * 14;
+        camera.position.z = Math.cos(t * 0.25) * 14;
+        camera.position.y = 4.0 + Math.sin(t * 0.5) * 1.2;
+        camera.lookAt(0, 2, 0);
+      } else {
+        controls.update();
+      }
+
+      // Elevate lanterns gently
+      lanterns.forEach((l) => {
+        l.position.y += 0.015;
+        if (l.position.y > 18) l.position.y = 1;
+      });
+
+      renderer.render(scene, camera);
+    }
+    animate();
+
+    window.addEventListener('resize', () => {
+      camera.aspect = window.innerWidth / window.innerHeight;
+      camera.updateProjectionMatrix();
+      renderer.setSize(window.innerWidth, window.innerHeight);
+    });
+  </script>
+</body>
+</html>
